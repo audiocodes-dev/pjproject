@@ -27,6 +27,9 @@
 /* RTP-vs-wallclock discrepancy threshold for timestamp discontinuity (1s) */
 #define MAX_MARKER_GAP_MS 1000
 
+/* Minimum wall-clock excess over RTP gap to trigger marker adjustment (ms) */
+#define MIN_MARKER_GAP_MS 150
+
 static const char *USAGE =
 "pcaputil [options] INPUT OUTPUT\n"
 "\n"
@@ -339,6 +342,7 @@ static void pcap2wav(const struct args *args)
     unsigned samples_per_frame, ns_per_sample;
     pj_status_t status;
     pj_int64_t max_marker_gap_diff_ns;
+    pj_int64_t min_marker_gap_diff_ns;
 
     /* Initialize all codecs */
     T( pjmedia_codec_register_audio_codecs(app.mept, NULL) );
@@ -425,6 +429,9 @@ static void pcap2wav(const struct args *args)
        in nanoseconds. */
     max_marker_gap_diff_ns = (pj_int64_t)MAX_MARKER_GAP_MS * 1000000;
 
+    /* Minimum wall-clock excess over RTP gap to trigger adjustment, in nanoseconds. */
+    min_marker_gap_diff_ns = (pj_int64_t)MIN_MARKER_GAP_MS * 1000000;
+
     /* Loop reading PCAP and writing WAV file */
     for (;;) {
         struct rtp_packet pkt1;
@@ -474,6 +481,16 @@ static void pcap2wav(const struct args *args)
             const pj_int64_t ts_gap_ns = ts_gap_samples * ns_per_sample;
             const pj_int64_t wallclock_gap_ns = (pj_int64_t)(pkt1.packet_ts.u64 - pkt0.packet_ts.u64);
             ts_discontinuity = ts_gap_ns - max_marker_gap_diff_ns >= wallclock_gap_ns;
+            /* When the RTP marker bit is set (start of a talkspurt after
+             * silence/hold), RTP timestamps may not reflect the actual pause
+             * duration. If the real wall-clock gap (from pcap timestamps)
+             * exceeds the RTP timestamp gap by more than 150ms (a jitter
+             * buffer to tolerate clock drift and network jitter), use the
+             * wall-clock gap instead so that silence is correctly filled.
+             */
+            if (ts_gap_ns + min_marker_gap_diff_ns < wallclock_gap_ns) {
+                ts_gap_samples = wallclock_gap_ns * param.info.clock_rate / 1000000000;
+            }
         } else {
             ts_discontinuity = PJ_FALSE;
         }
