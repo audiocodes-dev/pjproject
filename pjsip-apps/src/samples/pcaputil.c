@@ -422,7 +422,7 @@ static void pcap2wav(const struct args *args)
         pjmedia_frame frames[16], pcm_frame;
         short pcm[PJMEDIA_MAX_MTU];
         unsigned i, frame_cnt;
-        long samples_cnt, ts_gap;
+        long samples_cnt, ts_gap_samples;
 
         pj_assert(sizeof(pcm) >= samples_per_frame);
 
@@ -454,10 +454,10 @@ static void pcap2wav(const struct args *args)
         }
 
         /* Fill in the gap (if any) between pkt0 and pkt1 */
-        ts_gap = pkt1.rtp_ts - pkt0.rtp_ts - samples_cnt;
+        ts_gap_samples = pkt1.rtp_ts - pkt0.rtp_ts - samples_cnt;
 
-        if (ts_gap <= (long)param.info.clock_rate * GAP_IGNORE_SECONDS) { /* Ignore gap >30s */
-            while (ts_gap >= (long)samples_per_frame) {
+        if (ts_gap_samples <= (long)param.info.clock_rate * GAP_IGNORE_SECONDS) { /* Ignore gap >30s */
+            while (ts_gap_samples >= (long)samples_per_frame) {
                 pcm_frame.buf = pcm;
                 pcm_frame.size = samples_per_frame * 2;
 
@@ -474,7 +474,7 @@ static void pcap2wav(const struct args *args)
                 if (app.aud_strm) {
                     T( wait_play(&pcm_frame) );
                 }
-                ts_gap -= samples_per_frame;
+                ts_gap_samples -= samples_per_frame;
             }
         }
 
